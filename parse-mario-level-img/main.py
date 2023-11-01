@@ -1,12 +1,33 @@
+from pathlib import Path
 import sys
 import os
+import numpy as np
+import json
+
 from PIL import Image
-from typing import List, Dict, Tuple
+from numpy.typing import NDArray
 
-ImageData = List[Tuple[int, int, int]]
-def load_matches() -> List[Dict[ImageData, float]]:
+from typing import List, Tuple
 
-    matches: List[Dict[ImageData, float]] = []
+
+ImageData = NDArray
+def load_matches() -> List[Tuple[ImageData, float]]:
+
+    matches: List[Tuple[ImageData, float]] = []
+
+    if not os.path.isfile("./match.json"):
+
+        print(f"Couldn't find \"match.json\". Make sure the file is correctly place inside this directory! {__file__}")
+        exit(-1)
+
+    with open("./match.json", "r") as f:
+
+        dat = json.load(f)
+
+        for obj in dat["matches"]:
+
+            img = np.asarray(Image.open(obj["path"]).convert("L"))
+            matches.append((img, float(obj["value"])))
 
     return matches
 
@@ -28,15 +49,87 @@ def main() -> None:
     #check for tile matches
     #for now empty because I'm lazy but I'll make it work
 
-    matches = load_matches()
+    matches: List[Tuple[ImageData, float]] = load_matches()
+
+    if not os.path.isdir("./out/"):
+        print("Output directory not present creating one!")
+        os.mkdir("./out")
 
     for img_path in os.listdir(path):
         
-        parse_image(img_path, matches)
+        w: str = parse_image(os.path.abspath(path + "/" + img_path), matches)
 
-def parse_image(path_to_img: str, matches: List[Dict[ImageData, float]]) -> None:
+        with open(f"./out/{img_path}.dat", "w") as f:
 
-    print(f"Path to image: {path_to_img}")
+            f.write(w)
+
+def is_equal(a: NDArray, a_xoff: int, a_yoff: int, b: NDArray) -> bool:
+
+    
+    #
+    #NOTE: This when uncommented can be used to get tiles that are not of the same colour 
+    #      Good when you want to save tiles so they match over here
+    #
+    #arr = []
+
+    #for i in range(16):
+        #for j in range(16):
+
+            #arr.append(a[a_yoff*16 + i][a_xoff*16 + j])
+
+    #if len(set(arr)) == 1:
+        #return False
+
+
+    #_arr = np.reshape(np.array(arr), (16, 16))
+    #Image.fromarray(_arr).show()
+    #Image.fromarray(_arr).save("./sprite/brick2.png")
+
+    #input()
+
+    for i in range(16):
+        for j in range(16):
+
+            if a[a_yoff*16 + i][a_xoff*16 + j] != b[i][j]:
+                return False
+
+    return True
+
+def parse_image(path_to_img: str, matches: List[Tuple[ImageData, float]]) -> str:
+
+    img: NDArray = np.asarray(Image.open(path_to_img).convert("L"))
+
+    img_size = img.shape
+
+    if img_size[0] % 16 != 0 or img_size[1] % 16 != 0:
+        print("Could not split image into 16x16 tiles, please make it so it's possible!")
+        exit(-1)
+
+    y_tiles: int = int(img_size[0] / 16)
+    x_tiles: int = int(img_size[1] / 16)
+
+    out_buffer: str = ""
+    print(img_size)
+
+    for y in range(y_tiles):
+        for x in range(x_tiles):
+
+            check: bool = False
+
+            #compare tiles to see if any matches ...
+            for m in matches:
+
+                if is_equal(img, x, y, m[0]):
+
+                    out_buffer += str(m[1]) + " "
+                    check = True
+                    break
+
+            if not check:
+                out_buffer += "0 "
+
+
+    return out_buffer
 
 if __name__ == '__main__':
     main()
